@@ -469,6 +469,26 @@ function selectTarget(v){
 }
 function applyEmojis(em){if(em)Object.assign(playerEmojis,em);}
 
+// ── Frozen badge helpers ──────────────────────
+function showFrozenBadge(frozenPos){
+  // Show on ALL clients — we get frozenPos from server
+  ['bottom','top','left','right'].forEach(slot=>{
+    const el=$(slot==='bottom'?'av-bottom':`av-${slot}`);
+    if(el) el.querySelectorAll('.frozen-badge').forEach(b=>b.remove());
+  });
+  const slot = frozenPos===myPos ? 'bottom' : vslot(frozenPos);
+  const avEl = $(`av-${slot}`);
+  if(avEl){
+    const b=document.createElement('span');
+    b.className='frozen-badge';
+    b.textContent='❄ FROZEN';
+    avEl.appendChild(b);
+  }
+}
+function clearFrozenBadge(){
+  document.querySelectorAll('.frozen-badge').forEach(b=>b.remove());
+}
+
 // ── B1 Phase UI ───────────────────────────────
 let b1MyTurn = false;
 function showB1Buttons(show){
@@ -634,12 +654,7 @@ socket.on('b1Called',({callerPos,callerName,frozenPos,frozenName})=>{
   toast(`🎯 ${callerName} called Bonus in 1 Hand! ${frozenName} is frozen.`,3500);
   $('status').textContent=`${callerName} called B1 — selecting power card…`;
   updateBidInfo(callerName,'B1');
-  // Show frozen badge on frozen player's avatar
-  const fSlot=frozenPos===myPos?'bottom':vslot(frozenPos);
-  const avEl=$(`av-${fSlot}`);
-  if(avEl&&!avEl.querySelector('.frozen-badge')){
-    const b=document.createElement('span');b.className='frozen-badge';b.textContent='❄FROZEN';avEl.appendChild(b);
-  }
+  showFrozenBadge(frozenPos);
 });
 socket.on('b1Skipped',({pos,name})=>{
   toast(`${name} skipped B1`,1500);
@@ -680,11 +695,7 @@ socket.on('playingStarted',({currentPlayer:cp,currentPlayerName,trickNumber,b1Fr
   $('status').textContent=`${currentPlayerName} leads Trick 1`;
   updateTrickNum(trickNumber);
   if(bidType==='b1'&&b1FrozenPos>=0){
-    const fSlot=b1FrozenPos===myPos?'bottom':vslot(b1FrozenPos);
-    const avEl=$(`av-${fSlot}`);
-    if(avEl&&!avEl.querySelector('.frozen-badge')){
-      const b=document.createElement('span');b.className='frozen-badge';b.textContent='❄FROZEN';avEl.appendChild(b);
-    }
+    showFrozenBadge(b1FrozenPos);
     if(b1FrozenPos===myPos) toast('❄ You are frozen this round — watch the game!',4000);
   }
   if(bidType==='b2') toast('🎯 Bonus in 2 Hands — your team needs 10 tricks!',3500);
@@ -734,6 +745,7 @@ socket.on('newTrickStarting',({trickNumber,leader,leaderName})=>{
 socket.on('roundEnd',data=>{
   scores=data.totalScores;updateHUD();updateTricks(data.tricksWon);
   isMyTurn=false;validIds=[];setRevealBtn(false);stopBidTimer();canDiscardAll=false;renderHand();
+  clearFrozenBadge();
   const myTeam=players.find(p=>p.position===myPos);
   if(myTeam&&data.roundScore[myTeam.team]>0)launchConfetti(2200);
   openRoundEnd(data);
