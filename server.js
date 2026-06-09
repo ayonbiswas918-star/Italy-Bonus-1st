@@ -882,15 +882,21 @@ io.on('connection', socket => {
 
     socket.emit('handUpdate',{ hand:sortHand(hand) });
 
-    // B1: auto-reveal power card immediately and start play
+    // B1: auto-reveal power card, return card to hand, then start play
     if(gs.bidType === 'b1'){
       gs.trumpRevealed = true;
-      gs.phase = 'playing';
-      io.to(room.code).emit('powerCardPlaced',{
-        bidderPos:  pos,
-        bidderName: nm(room,pos),
-        bid:        'B1',
-      });
+      gs.phase         = 'playing';
+
+      // Return the selected card back to the B1 caller's hand (they play with it)
+      gs.hands[pos].push(card);
+      gs.hands[pos] = sortHand(gs.hands[pos]);
+      // Power card is now revealed — clear it from hidden slot
+      gs.powerCard = null;
+
+      // Update caller's hand on their client
+      socket.emit('handUpdate',{ hand: gs.hands[pos] });
+
+      // Tell everyone trump is revealed
       io.to(room.code).emit('trumpRevealed',{
         trumpSuit:      gs.trumpSuit,
         powerCard:      card,
@@ -942,6 +948,9 @@ io.on('connection', socket => {
     // Update bidder to B1 caller
     gs.currentBidder = pos;
 
+    // CRITICAL: set phase so choosePowerCard handler accepts the next event
+    gs.phase = 'selectingPowerCard';
+
     // Tell everyone B1 was called
     io.to(room.code).emit('b1Called',{
       callerPos:   pos,
@@ -950,8 +959,8 @@ io.on('connection', socket => {
       frozenName:  nm(room, gs.b1FrozenPos),
     });
 
-    // Ask B1 caller to select power card
-    socket.emit('selectPowerCard',{ hand:gs.hands[pos] });
+    // Ask B1 caller to select power card from their full 13-card hand
+    socket.emit('selectPowerCard',{ hand: gs.hands[pos] });
   });
 
   socket.on('b1Skip',()=>{
