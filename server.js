@@ -829,7 +829,7 @@ io.on('connection', socket => {
       if(forced) return socket.emit('err','You must bid!');
       io.to(room.code).emit('bidEvent',{ type:'pass', pos, name:nm(room,pos) });
       advanceCalling(room);
-    } else if(isB2 && gs.currentBid < 10){
+    } else if(isB2 && gs.currentBid < 10){  // B2 always available unless B2 already called
       // B2 bid — beats everything, no further outbidding allowed
       if(gs.powerCard){
         gs.hands[gs.currentBidder].push(gs.powerCard.card);
@@ -1050,7 +1050,9 @@ io.on('connection', socket => {
     });
     socket.emit('handUpdate',{ hand:sortHand(hand) });
 
-    if(gs.currentTrick.length===4) setTimeout(()=>resolveTrick(room), 1500);
+    // B1: trick completes with 3 cards (frozen player skipped); normal: 4 cards
+    const trickDone = gs.bidType==='b1' ? gs.currentTrick.length===3 : gs.currentTrick.length===4;
+    if(trickDone) setTimeout(()=>resolveTrick(room), 1500);
     else {
       let next = (gs.currentPlayer+1)%4;
       // B1: skip frozen partner
