@@ -459,7 +459,10 @@ function kickPlayer(pos){
   if(!amHost)return;
   if(confirm('Kick this player?'))socket.emit('kickPlayer',{targetPos:pos});
 }
-function onRestartGame(){socket.emit('restartGame');}
+function onRestartGame(){
+  if(!amHost){ toast('⚠ Only the room host can reset the game',2500); return; }
+  socket.emit('restartGame');
+}
 function copyCode(){navigator.clipboard?.writeText($('disp-code').textContent).then(()=>toast('Code copied! 📋'));}
 function selectTarget(v){
   socket.emit('setTarget',{target:v});$('t30').classList.toggle('sel',v===30);$('t50').classList.toggle('sel',v===50);
@@ -630,6 +633,7 @@ socket.on('b1Called',({callerPos,callerName,frozenPos,frozenName})=>{
   b1MyTurn=false;showB1Buttons(false);
   toast(`🎯 ${callerName} called Bonus in 1 Hand! ${frozenName} is frozen.`,3500);
   $('status').textContent=`${callerName} called B1 — selecting power card…`;
+  updateBidInfo(callerName,'B1');
   // Show frozen badge on frozen player's avatar
   const fSlot=frozenPos===myPos?'bottom':vslot(frozenPos);
   const avEl=$(`av-${fSlot}`);
@@ -647,6 +651,9 @@ socket.on('b1PhaseEnded',({called,callerPos,frozenPos})=>{
     toast('All skipped — normal game starts',2000);
   }
 });
+
+// Fix 3: host-only restart
+function isMyRestartAllowed(){ return amHost; }
 
 // Discard result
 socket.on('playerDiscarded',({pos,name})=>{
