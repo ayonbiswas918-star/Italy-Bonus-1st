@@ -384,7 +384,7 @@ function openBidPanel(current,canPass,hand,b2Active){
   $('bid-info').textContent=current>0?`Current bid: ${displayBid} — bid higher or pass`:'No bid yet — open the bidding!';
   [7,8,9].forEach(n=>{$(`b${n}`).disabled=isB2Active||(n<=current);});
   // B2 button: disabled if B2 already called or current >= 9
-  const bb2=$('bb2');if(bb2)bb2.disabled=isB2Active||(current>=9);
+  const bb2=$('bb2');if(bb2)bb2.disabled=isB2Active;  // disabled only if B2 already called
   const nb=$('bnil');
   if(isB2Active){ nb.disabled=false; nb.textContent='Pass (Nil)'; }
   else { nb.disabled=!canPass; nb.textContent=canPass?'Pass (Nil)':'You MUST bid!'; }
