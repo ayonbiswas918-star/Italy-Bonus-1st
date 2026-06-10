@@ -238,22 +238,9 @@ function onDiscardAll(){
 }
 
 // ── Trick display ─────────────────────────────
-// Map full slot name to trick slot letter
-const slotLetter = {'bottom':'b','top':'t','left':'l','right':'r'};
-function setTrick(sp,card,animate){
-  const full = sp===myPos ? 'bottom' : vslot(sp);
-  const s    = slotLetter[full] || 'b';
-  const el   = $(`ts-${s}`);if(!el)return;
-  if(!card){ el.innerHTML=''; return; }
-  if(animate){
-    animCardToSlot(card, sp, s, ()=>{  // s is already the letter
-      el.innerHTML='';
-      el.appendChild(mkCard(card,'tc played'));
-    });
-  } else {
-    el.innerHTML='';
-    el.appendChild(mkCard(card,'tc played'));
-  }
+function setTrick(sp,card){
+  const s=vslot(sp)[0];const el=$(`ts-${s}`);if(!el)return;
+  el.innerHTML='';if(card)el.appendChild(mkCard(card,'tc played'));
 }
 function clearTricks(){['t','b','l','r'].forEach(s=>{const e=$(`ts-${s}`);if(e)e.innerHTML='';});}
 function flashWinner(sp){
@@ -502,92 +489,6 @@ function clearFrozenBadge(){
   document.querySelectorAll('.frozen-badge').forEach(b=>b.remove());
 }
 
-// ── Card Animation Helpers ────────────────────
-// Get center of a trick slot element
-function getTrickSlotCenter(slot){
-  const el = $(`ts-${slot}`);
-  if(!el) return null;
-  const r = el.getBoundingClientRect();
-  return { x: r.left + r.width/2, y: r.top + r.height/2 };
-}
-
-// Get center of player avatar by position
-function getPlayerCenter(pos){
-  const slotFull = pos===myPos ? 'me' : vslot(pos);
-  const slot = slotFull;
-  // For my cards, use my-hand center
-  if(pos===myPos){
-    const hw = $('my-hand');
-    if(hw){ const r=hw.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; }
-  }
-  const av = $(`av-${slot}`);
-  if(av){ const r=av.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; }
-  return null;
-}
-
-// Animate a card flying from source position to a trick slot
-function posToTrickLetter(pos){
-  const full = pos===myPos ? 'bottom' : vslot(pos);
-  return slotLetter[full] || 'b';
-}
-function animCardToSlot(card, fromPos, toSlotId, onDone){
-  const fromCenter = getPlayerCenter(fromPos);
-  const toSlot     = $(`ts-${toSlotId}`);
-  if(!fromCenter || !toSlot){ if(onDone) onDone(); return; }
-
-  const toR   = toSlot.getBoundingClientRect();
-  const toCx  = toR.left + toR.width/2;
-  const toCy  = toR.top  + toR.height/2;
-  const dx    = fromCenter.x - toCx;
-  const dy    = fromCenter.y - toCy;
-
-  // Clone the card element
-  const clone = mkCard(card,'tc');
-  clone.classList.add('card-flying');
-  clone.style.cssText += `
-    left:${toCx - 21}px;top:${toCy - 30}px;
-    width:42px;height:60px;
-    --fly-start:translate(${dx}px,${dy}px) scale(.9);
-  `;
-  document.body.appendChild(clone);
-
-  clone.addEventListener('animationend',()=>{
-    clone.remove();
-    if(onDone) onDone();
-  },{once:true});
-}
-
-// Animate all 4 trick slot cards flying toward winner's position
-function animTrickToWinner(winnerPos){
-  const slots = ['t','b','l','r'];
-  const winCenter = getPlayerCenter(winnerPos);
-  if(!winCenter) return;
-
-  slots.forEach(slot=>{  // slot is already 't','b','l','r'
-    const slotEl = $(`ts-${slot}`);
-    if(!slotEl) return;
-    const cardEl = slotEl.querySelector('.card,.mc,.cb');
-    if(!cardEl) return;
-
-    const r   = slotEl.getBoundingClientRect();
-    const cx  = r.left + r.width/2;
-    const cy  = r.top  + r.height/2;
-    const dx  = winCenter.x - cx;
-    const dy  = winCenter.y - cy;
-
-    const clone = cardEl.cloneNode(true);
-    clone.classList.add('card-flying','fly-win');
-    clone.style.cssText += `
-      left:${cx - r.width/2}px;top:${cy - r.height/2}px;
-      width:${r.width}px;height:${r.height}px;
-      --fly-mid:translate(${dx*.4}px,${dy*.4}px);
-      --fly-end:translate(${dx}px,${dy}px);
-    `;
-    document.body.appendChild(clone);
-    clone.addEventListener('animationend',()=>clone.remove(),{once:true});
-  });
-}
-
 // ── B1 Phase UI ───────────────────────────────
 let b1MyTurn = false;
 function showB1Buttons(show){
@@ -826,7 +727,7 @@ socket.on('yourTurn',({validCardIds:vids,leadSuit:ls,trumpSuit:ts,trumpRevealed:
   }
 });
 socket.on('cardPlayed',({position,name,card})=>{
-  setTrick(position,card,true);  // animate=true
+  setTrick(position,card);
   if(position!==myPos){handCounts[position]=Math.max(0,(handCounts[position]||0)-1);updateFan(vslot(position),handCounts[position]);}
   sfxCard();
 });
@@ -841,8 +742,6 @@ socket.on('trumpRevealed',({trumpSuit:ts,powerCard,revealedByName,bidderPos})=>{
 });
 socket.on('trickComplete',({winnerPos,winnerName,winnerTeam,tricksWon,trickNumber})=>{
   flashWinner(winnerPos);
-  // Animate trick cards flying to winner
-  setTimeout(()=>animTrickToWinner(winnerPos), 180);
   setTimeout(()=>sfxWin(),120);setTimeout(()=>updateTricks(tricksWon),150);
   const dot=$('center-dot');if(dot){dot.classList.add('wflash');setTimeout(()=>dot.classList.remove('wflash'),700);}
   $('status').textContent=`${winnerName} (Team ${winnerTeam}) wins trick ${trickNumber}!`;toast(`${winnerName} wins trick ${trickNumber}! 🎉`,2000);
