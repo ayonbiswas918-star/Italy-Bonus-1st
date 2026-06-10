@@ -177,7 +177,21 @@ function sendStateToPlayer(room, pos){
     }
   } else if(phase==='selectingPowerCard' && gs.currentBidder===pos){
     s.emit('selectPowerCard',{ hand: gs.hands[pos] });
+  } else if(phase==='b1Phase'){
+    // Reconnected during B1 phase
+    s.emit('b1PhaseStarted',{
+      firstPos:  gs.b1Turn,
+      firstName: nm(room, gs.b1Turn),
+    });
+    s.emit('b1TurnChanged',{
+      pos:  gs.b1Turn,
+      name: nm(room, gs.b1Turn),
+    });
+    if(gs.b1Turn === pos){
+      s.emit('yourB1Turn',{ pos, hand: gs.hands[pos] });
+    }
   } else if(phase==='dealing2' || phase==='playing'){
+    // Send trump info first
     if(gs.trumpRevealed){
       s.emit('trumpRevealed',{
         trumpSuit:     gs.trumpSuit,
@@ -188,24 +202,44 @@ function sendStateToPlayer(room, pos){
         autoReveal:    true,
       });
     }
-    if(phase==='playing' && gs.currentPlayer===pos){
-      sendTurn(room, pos);
-    } else {
-      s.emit('turnChanged',{
+
+    if(phase==='playing'){
+      // Re-send playingStarted so client sets up game correctly
+      s.emit('playingStarted',{
         currentPlayer:     gs.currentPlayer,
         currentPlayerName: nm(room, gs.currentPlayer),
+        trickNumber:       gs.trickNumber,
+        b1FrozenPos:       gs.b1FrozenPos,
+        bidType:           gs.bidType,
+        isReconnect:       true,
       });
-    }
-    // Re-send trick cards played so far this trick
-    if(gs.currentTrick.length > 0){
-      gs.currentTrick.forEach(tc=>{
-        s.emit('cardPlayed',{
-          position:   tc.position,
-          name:       nm(room, tc.position),
-          card:       tc.card,
-          trickSoFar: gs.currentTrick,
+
+      // Re-send tricks won so tally is correct
+      s.emit('tricksUpdate',{
+        tricksWon: gs.tricksWon,
+      });
+
+      // Re-send trick cards played so far this trick
+      if(gs.currentTrick.length > 0){
+        gs.currentTrick.forEach(tc=>{
+          s.emit('cardPlayed',{
+            position:   tc.position,
+            name:       nm(room, tc.position),
+            card:       tc.card,
+            trickSoFar: gs.currentTrick,
+          });
         });
-      });
+      }
+
+      // Send turn info
+      if(gs.currentPlayer === pos){
+        sendTurn(room, pos);
+      } else {
+        s.emit('turnChanged',{
+          currentPlayer:     gs.currentPlayer,
+          currentPlayerName: nm(room, gs.currentPlayer),
+        });
+      }
     }
   } else if(phase==='roundEnd'){
     // Re-open round end panel
@@ -526,7 +560,7 @@ function resolveTrick(room){
   // B1: only 3 players, so 13 tricks total (frozen player contributes 0)
   const trickTarget = 13;
   if(total >= trickTarget){
-    setTimeout(()=>endRound(room), 2000);
+    setTimeout(()=>endRound(room), 1400);
   } else {
     let leader = w.position;
     // B1: if winner is frozen, pass lead to next valid player
@@ -541,7 +575,7 @@ function resolveTrick(room){
         leaderName:  nm(room, gs.currentPlayer),
       });
       sendTurn(room, gs.currentPlayer);
-    }, 2000);
+    }, 1200);
   }
 }
 
@@ -1052,7 +1086,7 @@ io.on('connection', socket => {
 
     // B1: trick completes with 3 cards (frozen player skipped); normal: 4 cards
     const trickDone = gs.bidType==='b1' ? gs.currentTrick.length===3 : gs.currentTrick.length===4;
-    if(trickDone) setTimeout(()=>resolveTrick(room), 1500);
+    if(trickDone) setTimeout(()=>resolveTrick(room), 900);
     else {
       let next = (gs.currentPlayer+1)%4;
       // B1: skip frozen partner
