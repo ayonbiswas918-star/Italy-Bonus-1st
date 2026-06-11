@@ -14,20 +14,24 @@
 ══════════════════════════════════════ */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 :root{
-  --felt-edge:#041a0c;
-  --felt-mid:#093d1c;
-  --felt-inner:#0e5a28;
-  --felt-bright:#126830;
-  --rim-outer:#1a0800;
-  --rim-inner:#6b3800;
+  /* Dark Gold Casino theme */
+  --felt-edge:#050404;
+  --felt-mid:#0d0a06;
+  --felt-inner:#120e07;
+  --felt-bright:#1a1408;
+  --rim-outer:#0a0806;
+  --rim-inner:#3d2e0a;
   --rim-shine:#c8821a;
   --gold:#c8941a;
   --gold2:#e5b84a;
   --gold3:#f5e4a0;
   --red:#d42b2b;
   --card-bg:#fffef5;
-  --ta:#5b9cf6;
-  --tb:#f47a7a;
+  --ta:#f0c040;
+  --tb:#c0392b;
+  --bg-dark:#07060a;
+  --bg-panel:rgba(18,14,8,.97);
+  --border-gold:rgba(200,148,26,.28);
   --ff:'Cinzel Decorative',serif;
   --fm:'Cinzel',serif;
   --fn:'Inter',sans-serif;
@@ -53,8 +57,9 @@ html,body{
 ══════════════════════════════════════ */
 #screen-lobby{
   background:
-    radial-gradient(ellipse at 50% 0%,rgba(200,148,26,.2) 0%,transparent 55%),
-    linear-gradient(160deg,#07080d,#0c0e18);
+    radial-gradient(ellipse at 50% 0%,rgba(200,148,26,.25) 0%,transparent 50%),
+    radial-gradient(ellipse at 80% 100%,rgba(180,120,10,.12) 0%,transparent 45%),
+    linear-gradient(160deg,#060504,#0d0a06,#07060a);
 }
 #bg-canvas{position:fixed;inset:0;pointer-events:none;z-index:0}
 
@@ -73,9 +78,9 @@ html,body{
   color:rgba(200,148,26,.45)}
 
 .lobby-forms{flex:1;min-width:260px;max-width:360px;display:flex;flex-direction:column;gap:1rem}
-.lcard{background:rgba(255,255,255,.04);border:1px solid rgba(200,148,26,.18);
+.lcard{background:rgba(12,9,5,.92);border:1px solid rgba(200,148,26,.25);
   border-radius:16px;padding:1.4rem;display:flex;flex-direction:column;gap:.8rem;
-  box-shadow:0 8px 32px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.06)}
+  box-shadow:0 8px 40px rgba(0,0,0,.8),inset 0 1px 0 rgba(200,148,26,.1)}
 .lcard h2{font-family:var(--fm);font-size:1.1rem;letter-spacing:.07em;text-align:center;
   background:linear-gradient(135deg,#f5e4a0,#e5b84a);
   -webkit-background-clip:text;background-clip:text;color:transparent}
@@ -119,8 +124,9 @@ html,body{
    WAITING ROOM
 ══════════════════════════════════════ */
 #screen-waiting{
-  background:radial-gradient(ellipse at 50% 0%,rgba(200,148,26,.1),transparent 50%),
-    linear-gradient(160deg,#07080d,#0c0e18)}
+  background:
+    radial-gradient(ellipse at 50% 0%,rgba(200,148,26,.18),transparent 50%),
+    linear-gradient(160deg,#060504,#0d0a06)}
 .wait-wrap{position:relative;z-index:2;width:100%;max-width:500px;
   padding:1.5rem;display:flex;flex-direction:column;align-items:center;gap:.95rem}
 .wait-wrap h2{font-family:var(--fm);font-size:1.5rem;letter-spacing:.06em;
@@ -136,7 +142,7 @@ html,body{
   background:rgba(200,148,26,.1);border:1px solid rgba(200,148,26,.22);
   border-radius:20px;color:rgba(200,148,26,.7);cursor:pointer}
 .seats-grid{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;width:100%}
-.seat-tile{background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+.seat-tile{background:rgba(10,7,3,.7);border:1px solid rgba(200,148,26,.15);
   border-radius:12px;padding:.68rem .8rem;display:flex;align-items:center;gap:.55rem;
   cursor:pointer;transition:all .14s}
 .seat-tile:hover:not(.me){border-color:rgba(200,148,26,.4);background:rgba(200,148,26,.06);transform:translateY(-1px)}
@@ -154,7 +160,7 @@ html,body{
 .s-badge.B{background:rgba(200,46,46,.3);color:#ef9a9a}
 .swap-tip{font-size:.66rem;color:rgba(255,255,255,.25);font-style:italic}
 .wait-note{font-size:.8rem;color:rgba(255,255,255,.3);font-weight:700}
-.sbox{width:100%;background:rgba(255,255,255,.03);border:1px solid rgba(200,148,26,.14);
+.sbox{width:100%;background:rgba(10,7,3,.7);border:1px solid rgba(200,148,26,.22);
   border-radius:14px;padding:.9rem;display:flex;flex-direction:column;gap:.72rem}
 .sbox h3{font-family:var(--fm);font-size:.88rem;letter-spacing:.05em;color:var(--gold2);text-align:center}
 .t-row{display:flex;gap:.52rem}
@@ -168,19 +174,18 @@ html,body{
 ══════════════════════════════════════════════════ */
 #screen-game{
   overflow:hidden;padding:0;flex-direction:column;
-  /* Full-screen felt texture */
   background:
-    radial-gradient(ellipse at 30% 20%, rgba(255,255,255,.04) 0%, transparent 40%),
-    radial-gradient(ellipse at 70% 80%, rgba(0,0,0,.3) 0%, transparent 40%),
-    radial-gradient(ellipse at center, var(--felt-bright) 0%, var(--felt-inner) 30%, var(--felt-mid) 60%, var(--felt-edge) 100%);
+    radial-gradient(ellipse at 30% 25%,rgba(200,148,26,.06) 0%,transparent 45%),
+    radial-gradient(ellipse at 70% 75%,rgba(180,100,10,.05) 0%,transparent 45%),
+    radial-gradient(ellipse at center,#1a1408 0%,#110d06 35%,#0a0804 65%,#050403 100%);
 }
 
-/* Felt weave across whole screen */
+/* Subtle leather texture */
 #screen-game::before{
   content:'';position:absolute;inset:0;pointer-events:none;z-index:0;
   background:
-    repeating-linear-gradient(45deg,transparent,transparent 3px,rgba(0,0,0,.06) 3px,rgba(0,0,0,.06) 4px),
-    repeating-linear-gradient(-45deg,transparent,transparent 3px,rgba(255,255,255,.02) 3px,rgba(255,255,255,.02) 4px);
+    repeating-linear-gradient(45deg,transparent,transparent 4px,rgba(0,0,0,.07) 4px,rgba(0,0,0,.07) 5px),
+    repeating-linear-gradient(-45deg,transparent,transparent 4px,rgba(200,148,26,.02) 4px,rgba(200,148,26,.02) 5px);
 }
 
 /* ── HUD bar ── */
@@ -188,8 +193,10 @@ html,body{
   position:relative;z-index:50;flex-shrink:0;
   display:flex;align-items:center;justify-content:space-between;
   padding:.2rem .85rem;
-  background:linear-gradient(90deg,rgba(0,0,0,.7),rgba(0,0,0,.45),rgba(0,0,0,.7));
-  border-bottom:1px solid rgba(200,148,26,.2);min-height:40px}
+  background:linear-gradient(90deg,rgba(5,4,2,.95),rgba(12,9,4,.85),rgba(5,4,2,.95));
+  border-bottom:1.5px solid rgba(200,148,26,.35);
+  box-shadow:0 2px 18px rgba(0,0,0,.8),0 1px 0 rgba(200,148,26,.15);
+  min-height:40px}
 .hs{display:flex;flex-direction:column;align-items:center;min-width:90px}
 .hs .hl{font-size:.52rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.35);font-weight:700}
 .hs .hv{font-family:var(--fm);font-size:1.35rem;line-height:1;letter-spacing:.04em}
@@ -228,10 +235,10 @@ html,body{
 
 /* ── AVATAR ── */
 .av{position:relative;width:52px;height:52px;border-radius:50%;padding:3px;flex-shrink:0}
-.av.A{background:conic-gradient(from 0deg,#4a8ef5,#1a5dc8,#0a2d6e,#1a5dc8,#4a8ef5);
-  box-shadow:0 0 0 2px rgba(255,255,255,.15),0 0 16px rgba(74,142,245,.4),0 4px 12px rgba(0,0,0,.8)}
-.av.B{background:conic-gradient(from 0deg,#f55a5a,#c82e2e,#6e0a0a,#c82e2e,#f55a5a);
-  box-shadow:0 0 0 2px rgba(255,255,255,.15),0 0 16px rgba(245,90,90,.4),0 4px 12px rgba(0,0,0,.8)}
+.av.A{background:conic-gradient(from 0deg,#f0c040,#c8941a,#7a5500,#c8941a,#f0c040);
+  box-shadow:0 0 0 2px rgba(255,255,255,.2),0 0 18px rgba(200,148,26,.5),0 4px 12px rgba(0,0,0,.9)}
+.av.B{background:conic-gradient(from 0deg,#e05050,#b02020,#5a0a0a,#b02020,#e05050);
+  box-shadow:0 0 0 2px rgba(255,255,255,.15),0 0 16px rgba(192,57,43,.5),0 4px 12px rgba(0,0,0,.9)}
 .av.sm{width:44px;height:44px}
 .av.offline{opacity:.55;filter:grayscale(.6)}
 .av.active{animation:avGlow .85s ease-in-out infinite}
@@ -364,6 +371,15 @@ html,body{
   0%,100%{box-shadow:0 3px 0 rgba(0,0,0,.4),0 0 14px rgba(0,191,165,.5)}
   50%{box-shadow:0 3px 0 rgba(0,0,0,.4),0 0 28px rgba(0,191,165,.95)}}
 
+/* ── Card slide animation ── */
+@keyframes slideInCard{
+  0%  {transform:var(--slide-from);opacity:0}
+  100%{transform:translate(0,0);opacity:1}
+}
+.tc.played{
+  animation:slideInCard .28s cubic-bezier(.25,.8,.25,1) forwards;
+}
+
 /* ── Frozen player indicator ── */
 .frozen-badge{
   position:absolute;top:-8px;left:50%;transform:translateX(-50%);
@@ -400,17 +416,27 @@ html,body{
   position:absolute;inset:0;display:flex;flex-direction:column;
   align-items:center;justify-content:center;gap:2px;background:#fff}
 
-/* ── FACE DOWN BACK ── */
+/* ── FACE DOWN BACK — Dark Gold luxury ── */
 .card.back{
-  background:linear-gradient(135deg,#e8f0fe 0%,#d0e4f7 40%,#b8d4f0 100%);
-  border:1.5px solid rgba(100,140,220,.35)}
-.card.back::after{
-  content:'';position:absolute;inset:5px;border-radius:4px;
+  background:linear-gradient(160deg,#0e0b05 0%,#1a1408 40%,#0e0b05 100%);
+  border:1.5px solid rgba(200,148,26,.45)}
+.card.back::before{
+  content:'';position:absolute;inset:0;border-radius:6px;
   background:
-    repeating-linear-gradient(45deg,rgba(70,130,210,.1),rgba(70,130,210,.1) 3px,transparent 3px,transparent 9px),
-    repeating-linear-gradient(-45deg,rgba(70,130,210,.07),rgba(70,130,210,.07) 3px,transparent 3px,transparent 9px);
-  border:1.5px solid rgba(70,120,200,.25);
-  box-shadow:inset 0 0 8px rgba(100,150,220,.15)}
+    repeating-linear-gradient(45deg,transparent,transparent 5px,rgba(200,148,26,.04) 5px,rgba(200,148,26,.04) 6px),
+    repeating-linear-gradient(-45deg,transparent,transparent 5px,rgba(200,148,26,.03) 5px,rgba(200,148,26,.03) 6px);
+  pointer-events:none}
+.card.back::after{
+  content:'♦';position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:1.4em;
+  background:linear-gradient(135deg,#f5e4a0,#c8941a,#8c6200);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 4px rgba(200,148,26,.5));
+  border:1.5px solid rgba(200,148,26,.3);
+  border-radius:4px;
+  margin:5px;
+  box-shadow:inset 0 0 12px rgba(200,148,26,.1)}
 
 /* ── SIZES ── */
 /* Trick cards on felt */
@@ -476,11 +502,11 @@ html,body{
 .ov.open{display:flex}
 
 .panel{
-  background:linear-gradient(160deg,rgba(12,14,24,.98),rgba(7,8,13,.99));
-  border:1px solid rgba(200,148,26,.18);border-radius:16px;
+  background:linear-gradient(160deg,rgba(14,10,5,.99),rgba(8,6,3,.99));
+  border:1px solid rgba(200,148,26,.32);border-radius:16px;
   padding:1.35rem;width:92%;max-width:400px;
   display:flex;flex-direction:column;gap:.88rem;
-  box-shadow:0 24px 70px rgba(0,0,0,.9),inset 0 1px 0 rgba(255,255,255,.04);
+  box-shadow:0 24px 70px rgba(0,0,0,.95),0 0 40px rgba(200,148,26,.06),inset 0 1px 0 rgba(200,148,26,.12);
   animation:pIn .22s cubic-bezier(.34,1.56,.64,1);
   max-height:calc(100dvh - 52px);overflow-y:auto}
 @keyframes pIn{from{transform:scale(.84) translateY(22px);opacity:0}to{transform:none;opacity:1}}
@@ -502,8 +528,9 @@ html,body{
 .bn{padding:.78rem;font-family:var(--fm);font-size:1.7rem;letter-spacing:.04em;
   border:1px solid rgba(200,148,26,.2);border-radius:12px;background:rgba(200,148,26,.05);
   color:var(--gold2);cursor:pointer;transition:all .14s;box-shadow:0 3px 0 rgba(0,0,0,.4)}
-.bn:hover:not(:disabled){background:rgba(200,148,26,.14);border-color:var(--gold2);
-  transform:translateY(-2px);box-shadow:0 5px 0 rgba(0,0,0,.4)}
+.bn:hover:not(:disabled){background:linear-gradient(160deg,rgba(200,148,26,.2),rgba(150,100,10,.15));
+  border-color:var(--gold2);transform:translateY(-2px);
+  box-shadow:0 5px 0 rgba(0,0,0,.5),0 0 12px rgba(200,148,26,.2)}
 .bn:active{transform:translateY(1px);box-shadow:0 1px 0 rgba(0,0,0,.4)}
 .bn:disabled{opacity:.2;cursor:not-allowed}
 .bn-nil{
@@ -634,11 +661,12 @@ html,body{
   top:8px;left:8px;
   z-index:40;
   display:flex;flex-direction:column;gap:4px;
-  background:rgba(0,0,0,.62);
-  border:1px solid rgba(200,148,26,.22);
+  background:rgba(8,6,3,.85);
+  border:1px solid rgba(200,148,26,.32);
   border-radius:12px;
   padding:8px 12px 7px;
   backdrop-filter:blur(6px);
+  box-shadow:0 4px 16px rgba(0,0,0,.6);
   box-shadow:0 4px 18px rgba(0,0,0,.6);
   min-width:160px}
 .tib-tricks{

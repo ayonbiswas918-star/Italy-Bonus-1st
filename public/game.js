@@ -238,9 +238,22 @@ function onDiscardAll(){
 }
 
 // ── Trick display ─────────────────────────────
-function setTrick(sp,card){
-  const s=vslot(sp)[0];const el=$(`ts-${s}`);if(!el)return;
-  el.innerHTML='';if(card)el.appendChild(mkCard(card,'tc played'));
+// Map full slot name to trick slot letter
+const slotLetter = {'bottom':'b','top':'t','left':'l','right':'r'};
+function setTrick(sp,card,animate){
+  const full = sp===myPos ? 'bottom' : vslot(sp);
+  const s    = slotLetter[full] || 'b';
+  const el   = $(`ts-${s}`);if(!el)return;
+  if(!card){ el.innerHTML=''; return; }
+  if(animate){
+    animCardToSlot(card, sp, s, ()=>{  // s is already the letter
+      el.innerHTML='';
+      el.appendChild(mkCard(card,'tc played'));
+    });
+  } else {
+    el.innerHTML='';
+    el.appendChild(mkCard(card,'tc played'));
+  }
 }
 function clearTricks(){['t','b','l','r'].forEach(s=>{const e=$(`ts-${s}`);if(e)e.innerHTML='';});}
 function flashWinner(sp){
@@ -469,6 +482,27 @@ function selectTarget(v){
 }
 function applyEmojis(em){if(em)Object.assign(playerEmojis,em);}
 
+// ── Reconnect restore button ──────────────────
+function showReconnectBtn(){
+  let btn = $('btn-reconnect-restore');
+  if(!btn){
+    btn = document.createElement('button');
+    btn.id = 'btn-reconnect-restore';
+    btn.textContent = '🃏 Tap to see your cards';
+    btn.style.cssText = `
+      position:fixed;bottom:110px;left:50%;transform:translateX(-50%);
+      z-index:900;background:linear-gradient(135deg,#c8941a,#e5b84a);
+      color:#1a1208;border:none;border-radius:50px;padding:.7rem 1.4rem;
+      font-family:var(--fm);font-size:.9rem;font-weight:700;cursor:pointer;
+      box-shadow:0 4px 20px rgba(200,148,26,.6);animation:passGlow 1.2s infinite;
+    `;
+    btn.onclick = ()=>{ btn.remove(); renderHand(false); toast('✅ Cards restored!',1500); };
+    document.body.appendChild(btn);
+    // Auto-remove after 15s
+    setTimeout(()=>{ if(btn.parentNode) btn.remove(); }, 15000);
+  }
+}
+
 // ── Frozen badge helpers ──────────────────────
 function showFrozenBadge(frozenPos){
   // Show on ALL clients — we get frozenPos from server
@@ -535,10 +569,9 @@ document.addEventListener('keydown',e=>{
 // Reconnect handlers
 socket.on('reconnectOk',({position,isHost,roomCode})=>{
   myPos=position;amHost=isHost;currentRoomCode=roomCode;
-  toast('✅ Reconnected!');
-  // Clear any stale state
-  myHand=[];validIds=[];isMyTurn=false;
+  validIds=[];isMyTurn=false;
   clearFrozenBadge();
+  toast('✅ Reconnected! Loading game state…',2000);
 });
 socket.on('reconnectFailed',()=>{ currentRoomCode=null; toast('Could not reconnect. Please rejoin.'); });
 socket.on('playerReconnected',({position,name,players:ps})=>{
@@ -569,8 +602,11 @@ socket.on('gameReset',({players:ps})=>{
 socket.on('roundBegin',({roundNumber:rn,scores:sc,players:ps,matchTarget:mt,
   dealerPos:dp,dealerName,firstActiveName,firstActivePos,emojis,isReconnect})=>{
   roundNum=rn;scores=sc;matchTarget=mt;players=ps;dealerPos=dp;
-  myHand=[];validIds=[];isMyTurn=false;canDiscardAll=false;
-  trumpSuit=null;trumpRevealed=false;leadSuit=null;bidLog=[];handCounts={0:0,1:0,2:0,3:0};
+  if(!isReconnect){ myHand=[]; }  // reconnect: keep hand until handUpdate arrives
+  validIds=[];isMyTurn=false;canDiscardAll=false;
+  trumpSuit=null;trumpRevealed=false;leadSuit=null;
+  if(!isReconnect){ bidLog=[]; }
+  handCounts={0:0,1:0,2:0,3:0};
   applyEmojis(emojis);
   // Store who gets to discard (only the first card receiver = callingStart)
   window._callingStartPos = firstActivePos;
@@ -586,8 +622,15 @@ socket.on('roundBegin',({roundNumber:rn,scores:sc,players:ps,matchTarget:mt,
   if(!isReconnect){ showDealAnim(dealerName,firstActiveName);sfxDeal(); }
 });
 
-socket.on('handUpdate',({hand,dealPhase,isRedeal})=>{
+socket.on('handUpdate',({hand,dealPhase,isRedeal,isReconnect})=>{
   myHand=hand;handCounts[myPos]=hand.length;
+  if(isReconnect){
+    renderHand(false);
+    showScreen('screen-game');
+    // Show restore button so player can tap to confirm they see cards
+    showReconnectBtn();
+    return;
+  }
   // Only the callingStart player (first card receiver) can discard, and only if no A/J/Q/K
   const isFirstReceiver=(window._callingStartPos===myPos);
   const hasFaceOrAce=hand.some(c=>['A','J','Q','K'].includes(c.rank));
