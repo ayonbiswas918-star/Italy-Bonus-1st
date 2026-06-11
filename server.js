@@ -38,6 +38,37 @@ function shuffle(a){
   return b;
 }
 function genCode(){let c;do{c=Math.random().toString(36).substr(2,6).toUpperCase();}while(rooms.has(c));return c;}
+
+// Real Italy riffle shuffle
+function riffleShuffle(deck){
+  const mid  = Math.floor(deck.length/2) + Math.floor(Math.random()*5) - 2;
+  const left = deck.slice(0,mid);
+  const right= deck.slice(mid);
+  const out  = [];
+  let li=0,ri=0;
+  while(li<left.length || ri<right.length){
+    // Randomly interleave 1-3 cards from each half (realistic riffle)
+    const take = Math.floor(Math.random()*3)+1;
+    for(let i=0;i<take&&li<left.length;i++)  out.push(left[li++]);
+    const take2= Math.floor(Math.random()*3)+1;
+    for(let i=0;i<take2&&ri<right.length;i++) out.push(right[ri++]);
+  }
+  return out;
+}
+
+function italyShuffle(trickHistory){
+  // Step 1: random order of trick groups
+  const groups = shuffle([...trickHistory]);
+  // Flatten: 13 groups of 4 cards
+  let deck = groups.flat();
+  // Step 2: riffle 2-3 times
+  const times = 2 + Math.floor(Math.random()*2);
+  for(let i=0;i<times;i++) deck = riffleShuffle(deck);
+  // Step 3: cut at random point
+  const cut = 10 + Math.floor(Math.random()*32);
+  deck = [...deck.slice(cut), ...deck.slice(0,cut)];
+  return deck;
+}
 const teamOf  = p=>p%2===0?'A':'B';
 const otherTeam=t=>t==='A'?'B':'A';
 function sortHand(h){
@@ -109,6 +140,7 @@ function freshState(prev, target){
     matchTarget:   target,
     roundNumber:   prev ? prev.roundNumber : 1,
     trickNumber:   1,
+    trickHistory:  [],   // stores each completed trick as array of 4 cards
     // Bonus bid types
     bidType:       'normal',   // 'normal' | 'b2' | 'b1'
     // B1 specific state
@@ -143,11 +175,8 @@ function sendStateToPlayer(room, pos){
 
   const phase = gs.phase;
 
-  // Always send their current hand
-  s.emit('handUpdate', { hand: gs.hands[pos] || [] });
-
-  // Send round info so UI switches to game screen
-  s.emit('roundBegin', {
+  // 1) Always show game screen with round info
+  s.emit('roundBegin',{
     roundNumber:     gs.roundNumber,
     scores:          gs.scores,
     players:         pi(room),
@@ -160,110 +189,86 @@ function sendStateToPlayer(room, pos){
     isReconnect:     true,
   });
 
-  // Re-send phase-specific state
-  if(phase === 'calling'){
-    s.emit('callingStarted',{
-      callerPos:  gs.callingTurn,
-      callerName: nm(room, gs.callingTurn),
-      currentBid: gs.currentBid,
-    });
-    if(gs.callingTurn === pos){
-      const forced = gs.callingCount===3 && gs.currentBid===0;
-      s.emit('yourCallingTurn',{
+  // 2) Send hand 150ms later so roundBegin UI settles first
+  setTimeout(()=>{
+    const s2 = sk(room, pos);
+    if(!s2) return;
+    s2.emit('handUpdate',{ hand: gs.hands[pos] || [], isReconnect: true });
+
+    // 3) Phase-specific state
+    if(phase==='calling'){
+      s2.emit('callingStarted',{
+        callerPos:  gs.callingTurn,
+        callerName: nm(room, gs.callingTurn),
         currentBid: gs.currentBid,
-        canPass: !forced,
-        hand: gs.hands[pos],
       });
-    }
-  } else if(phase==='selectingPowerCard' && gs.currentBidder===pos){
-    s.emit('selectPowerCard',{ hand: gs.hands[pos] });
-  } else if(phase==='b1Phase'){
-    // Reconnected during B1 phase
-    s.emit('b1PhaseStarted',{
-      firstPos:  gs.b1Turn,
-      firstName: nm(room, gs.b1Turn),
-    });
-    s.emit('b1TurnChanged',{
-      pos:  gs.b1Turn,
-      name: nm(room, gs.b1Turn),
-    });
-    if(gs.b1Turn === pos){
-      s.emit('yourB1Turn',{ pos, hand: gs.hands[pos] });
-    }
-  } else if(phase==='dealing2' || phase==='playing'){
-    // Send trump info first
-    if(gs.trumpRevealed){
-      s.emit('trumpRevealed',{
-        trumpSuit:     gs.trumpSuit,
-        powerCard:     gs.powerCard?.card || null,
-        revealedByPos: -1,
-        revealedByName:'',
-        bidderPos:     gs.currentBidder,
-        autoReveal:    true,
-      });
-    }
-
-    if(phase==='playing'){
-      // Re-send playingStarted so client sets up game correctly
-      s.emit('playingStarted',{
-        currentPlayer:     gs.currentPlayer,
-        currentPlayerName: nm(room, gs.currentPlayer),
-        trickNumber:       gs.trickNumber,
-        b1FrozenPos:       gs.b1FrozenPos,
-        bidType:           gs.bidType,
-        isReconnect:       true,
-      });
-
-      // Re-send tricks won so tally is correct
-      s.emit('tricksUpdate',{
-        tricksWon: gs.tricksWon,
-      });
-
-      // Re-send trick cards played so far this trick
-      if(gs.currentTrick.length > 0){
-        gs.currentTrick.forEach(tc=>{
-          s.emit('cardPlayed',{
-            position:   tc.position,
-            name:       nm(room, tc.position),
-            card:       tc.card,
-            trickSoFar: gs.currentTrick,
-          });
-        });
+      if(gs.callingTurn===pos){
+        const forced = gs.callingCount===3 && gs.currentBid===0;
+        s2.emit('yourCallingTurn',{ currentBid:gs.currentBid, canPass:!forced, hand:gs.hands[pos] });
       }
 
-      // Send turn info
-      if(gs.currentPlayer === pos){
-        sendTurn(room, pos);
-      } else {
-        s.emit('turnChanged',{
+    } else if(phase==='selectingPowerCard' && gs.currentBidder===pos){
+      s2.emit('selectPowerCard',{ hand: gs.hands[pos] });
+
+    } else if(phase==='b1Phase'){
+      s2.emit('b1PhaseStarted',{ firstPos:gs.b1Turn, firstName:nm(room,gs.b1Turn) });
+      s2.emit('b1TurnChanged',{ pos:gs.b1Turn, name:nm(room,gs.b1Turn) });
+      if(gs.b1Turn===pos) s2.emit('yourB1Turn',{ pos, hand:gs.hands[pos] });
+
+    } else if(phase==='dealing2' || phase==='playing'){
+      if(gs.trumpRevealed){
+        s2.emit('trumpRevealed',{
+          trumpSuit:      gs.trumpSuit,
+          powerCard:      gs.powerCard?.card||null,
+          revealedByPos:  -1,
+          revealedByName: '',
+          bidderPos:      gs.currentBidder,
+          autoReveal:     true,
+        });
+      }
+      if(phase==='playing'){
+        s2.emit('playingStarted',{
           currentPlayer:     gs.currentPlayer,
-          currentPlayerName: nm(room, gs.currentPlayer),
+          currentPlayerName: nm(room,gs.currentPlayer),
+          trickNumber:       gs.trickNumber,
+          b1FrozenPos:       gs.b1FrozenPos,
+          bidType:           gs.bidType,
+          isReconnect:       true,
         });
+        s2.emit('tricksUpdate',{ tricksWon: gs.tricksWon });
+        if(gs.currentTrick.length>0){
+          gs.currentTrick.forEach(tc=>{
+            s2.emit('cardPlayed',{
+              position: tc.position,
+              name:     nm(room,tc.position),
+              card:     tc.card,
+              trickSoFar: gs.currentTrick,
+            });
+          });
+        }
+        if(gs.currentPlayer===pos) sendTurn(room,pos);
+        else s2.emit('turnChanged',{ currentPlayer:gs.currentPlayer, currentPlayerName:nm(room,gs.currentPlayer) });
       }
+
+    } else if(phase==='roundEnd'){
+      const ct = teamOf(gs.currentBidder);
+      const rs = gs.lastRoundScore||{A:0,B:0};
+      s2.emit('roundEnd',{
+        tricksWon:   gs.tricksWon,
+        bid:         gs.currentBid,
+        bidder:      gs.currentBidder,
+        bidderTeam:  ct,
+        oppTarget:   OPP_TARGET,
+        roundScore:  rs,
+        totalScores: gs.scores,
+        message:     gs.lastRoundMsg||'',
+        powerCard:   gs.lastPowerCard||null,
+      });
+      s2.emit('readyCount',{ ready:room.readySet.size, total:room.players.length });
     }
-  } else if(phase==='roundEnd'){
-    // Re-open round end panel
-    const ct  = teamOf(gs.currentBidder);
-    const ot  = otherTeam(ct);
-    const rs  = gs.lastRoundScore || {A:0,B:0};
-    s.emit('roundEnd',{
-      tricksWon:   gs.tricksWon,
-      bid:         gs.currentBid,
-      bidder:      gs.currentBidder,
-      bidderTeam:  ct,
-      oppTarget:   OPP_TARGET,
-      roundScore:  rs,
-      totalScores: gs.scores,
-      message:     gs.lastRoundMsg || '',
-      powerCard:   gs.lastPowerCard || null,
-    });
-    s.emit('readyCount',{ ready: room.readySet.size, total: room.players.length });
-  }
+  }, 150);
 }
 
-// ─────────────────────────────────────────────
-//  GAME LOGIC HELPERS
-// ─────────────────────────────────────────────
 function validCards(gs,pos,hand){
   // B1: frozen player cannot play
   if(gs.bidType==='b1' && gs.b1FrozenPos>=0 && pos===gs.b1FrozenPos) return [];
@@ -294,7 +299,13 @@ function beginRound(room){
   room.gameState = gs;
   room.readySet.clear();
 
-  gs.deck = shuffle(createDeck());
+  // Use Italy shuffle if we have trick history from previous round
+  const prevGs = room._prevTrickHistory;
+  if(prevGs && prevGs.length === 13){
+    gs.deck = italyShuffle(prevGs);
+  } else {
+    gs.deck = shuffle(createDeck());
+  }
   // Deal 5 cards to each player starting from left of dealer
   for(let i=0;i<5;i++)
     for(let o=1;o<=4;o++)
@@ -553,6 +564,8 @@ function resolveTrick(room){
     trickNumber: gs.trickNumber,
   });
 
+  // Save trick for Italy shuffle
+  gs.trickHistory.push(trick.map(tc=>tc.card));
   gs.currentTrick = [];
   gs.leadSuit     = null;
   gs.trickNumber++;
@@ -616,6 +629,8 @@ function endRound(room){
   gs.scores.A += rs.A;
   gs.scores.B += rs.B;
   gs.phase     = 'roundEnd';
+  // Save trick history for next round's Italy shuffle
+  room._prevTrickHistory = [...gs.trickHistory];
 
   const bidLabel = gs.bidType==='b2' ? 'B2' : gs.bidType==='b1' ? 'B1' : gs.currentBid;
   const msg = [
