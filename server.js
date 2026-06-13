@@ -629,6 +629,21 @@ function endRound(room){
   gs.scores.A += rs.A;
   gs.scores.B += rs.B;
   gs.phase     = 'roundEnd';
+
+  // B1: frozen player's unplayed cards must be added back to trickHistory
+  // so next round's Italy shuffle has a full 52-card deck
+  if(gs.bidType === 'b1' && gs.b1FrozenPos >= 0){
+    const frozenCards = gs.hands[gs.b1FrozenPos] || [];
+    if(frozenCards.length > 0){
+      // Split frozen cards into groups of 4 to match trick format
+      // (any remaining are grouped together)
+      for(let i = 0; i < frozenCards.length; i += 4){
+        gs.trickHistory.push(frozenCards.slice(i, i+4));
+      }
+      gs.hands[gs.b1FrozenPos] = [];
+    }
+  }
+
   // Save trick history for next round's Italy shuffle
   room._prevTrickHistory = [...gs.trickHistory];
 
