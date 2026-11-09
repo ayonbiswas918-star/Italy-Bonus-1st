@@ -6,8 +6,12 @@ const socket = io();
 
 // ── Persistent session ────────────────────────
 function getSessionId(){
-  let sid = localStorage.getItem('italy_session');
-  if(!sid){ sid = 'sid_'+Date.now()+'_'+Math.random().toString(36).substr(2,8); localStorage.setItem('italy_session',sid); }
+  // Normal play: id stored in localStorage so reconnect works after closing the tab.
+  // Testing with several tabs in ONE browser: open the site with ?test in the URL
+  // so every tab gets its own id (otherwise all tabs share one id and look like the same player/host).
+  const store = /[?&]test\b/.test(location.search) ? sessionStorage : localStorage;
+  let sid = store.getItem('italy_session');
+  if(!sid){ sid = 'sid_'+Date.now()+'_'+Math.random().toString(36).substr(2,8); store.setItem('italy_session',sid); }
   return sid;
 }
 const SESSION_ID = getSessionId();
@@ -214,6 +218,7 @@ function renderHand(animate=false){
     el.addEventListener('click',()=>{
       if(!isMyTurn)return;
       if(!validIds.includes(card.id)){sfxErr();toast('Cannot play that card now!');return;}
+      isMyTurn=false;validIds=[];   // lock immediately: no second click/tap until server says it's my turn again
       socket.emit('playCard',{cardId:card.id});
     });
     el.draggable=true;
@@ -563,7 +568,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     tbl.addEventListener('dragover',e=>{if(isMyTurn&&dragId)e.preventDefault();});
     tbl.addEventListener('drop',e=>{e.preventDefault();
       const cid=e.dataTransfer.getData('text/plain')||dragId;
-      if(cid&&isMyTurn&&validIds.includes(cid))socket.emit('playCard',{cardId:cid});
+      if(cid&&isMyTurn&&validIds.includes(cid)){isMyTurn=false;validIds=[];socket.emit('playCard',{cardId:cid});}
     });
   }
   const ci=$('inp-code');if(ci)ci.addEventListener('input',e=>e.target.value=e.target.value.toUpperCase());
