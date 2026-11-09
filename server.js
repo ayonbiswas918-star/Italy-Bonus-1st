@@ -32,10 +32,33 @@ function createDeck(){
   for(const s of SUITS) for(const r of RANKS) d.push({suit:s,rank:r,id:`${r}_${s}`});
   return d;
 }
+// Fisher-Yates with a cryptographically secure RNG (unbiased, unpredictable)
+const crypto = require('crypto');
 function shuffle(a){
   const b=[...a];
-  for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}
+  for(let i=b.length-1;i>0;i--){const j=crypto.randomInt(i+1);[b[i],b[j]]=[b[j],b[i]];}
   return b;
+}
+const VALID_TARGETS = [32,52,72];
+
+// ── Deal validation ──
+// Simulate the second deal (dealRest) so we know each player's final 13 cards in advance.
+function simulateFullHands(gs, deck, initial){
+  const h = {0:[...initial[0]],1:[...initial[1]],2:[...initial[2]],3:[...initial[3]]};
+  let i = 0;
+  for(let r=0;r<2;r++)
+    for(let o=1;o<=4;o++){
+      const pos = (gs.dealerPos+o)%4;
+      for(let k=0;k<4&&i<deck.length;k++) h[pos].push(deck[i++]);
+    }
+  return h;
+}
+// A deal is rejected if anyone gets all 4 Aces, or has no A/K/Q/J at all in their 13 cards.
+function dealIsFair(h){
+  return [0,1,2,3].every(p=>{
+    const aces = h[p].filter(c=>c.rank==='A').length;
+    return aces < 4 && h[p].some(c=>FACE.has(c.rank));
+  });
 }
 function genCode(){let c;do{c=Math.random().toString(36).substr(2,6).toUpperCase();}while(rooms.has(c));return c;}
 
@@ -108,7 +131,7 @@ function createRoom(hostId, hostName, hostEmoji, hostSid){
       online:    true,
     }],
     emojis:     { 0: hostEmoji||'🎴' },
-    settings:   { matchTarget: 30 },
+    settings:   { matchTarget: 32 },
     gameState:  null,
     readySet:   new Set(),       // stores sessionIds (stable across reconnect)
   };
@@ -149,6 +172,8 @@ function freshState(prev, target){
     b1TurnCount:   0,          // how many have been asked
     b1Caller:      -1,         // who called B1 (-1 = none)
     b1FrozenPos:   -1,         // partner of B1 caller who is frozen
+    mustTrumpPos:  -1,         // player who just revealed trump and must play a trump card
+    surrender:     null,       // { pos, name } if the round ended by surrender
   };
 }
 
@@ -263,6 +288,7 @@ function sendStateToPlayer(room, pos){
         totalScores: gs.scores,
         message:     gs.lastRoundMsg||'',
         powerCard:   gs.lastPowerCard||null,
+        surrender:   gs.surrender||null,
       });
       s2.emit('readyCount',{ ready:room.readySet.size, total:room.players.length });
     }
@@ -276,6 +302,11 @@ function validCards(gs,pos,hand){
   // Must follow the lead suit if possible
   const lead=hand.filter(c=>c.suit===gs.leadSuit);
   if(lead.length>0) return lead;
+  // Player who just revealed trump MUST play a trump card (if they hold any)
+  if(gs.mustTrumpPos===pos && gs.trumpRevealed){
+    const tr=hand.filter(c=>c.suit===gs.trumpSuit);
+    if(tr.length>0) return tr;
+  }
   // No lead suit cards → player can play ANY card freely (trump is optional, not forced)
   return hand;
 }
@@ -299,17 +330,19 @@ function beginRound(room){
   room.gameState = gs;
   room.readySet.clear();
 
-  // Use Italy shuffle if we have trick history from previous round
-  const prevGs = room._prevTrickHistory;
-  if(prevGs && prevGs.length === 13){
-    gs.deck = italyShuffle(prevGs);
-  } else {
-    gs.deck = shuffle(createDeck());
+  // Fresh, unbiased shuffle every round. Re-shuffle until the deal is fair
+  // (no player with 4 Aces, nobody with zero face cards in their 13).
+  for(let attempt=0; attempt<500; attempt++){
+    gs.deck  = shuffle(createDeck());
+    gs.hands = {0:[],1:[],2:[],3:[]};
+    // Deal 5 cards to each player starting from left of dealer
+    for(let i=0;i<5;i++)
+      for(let o=1;o<=4;o++)
+        gs.hands[(gs.dealerPos+o)%4].push(gs.deck[i*4+(o-1)]);
+    const rest = gs.deck.slice(20);
+    if(dealIsFair(simulateFullHands(gs, rest, gs.hands))){ gs.deck = rest; break; }
+    if(attempt===499) gs.deck = rest;
   }
-  // Deal 5 cards to each player starting from left of dealer
-  for(let i=0;i<5;i++)
-    for(let o=1;o<=4;o++)
-      gs.hands[(gs.dealerPos+o)%4].push(gs.deck.shift());
   for(let p=0;p<4;p++) gs.hands[p] = sortHand(gs.hands[p]);
 
   gs.phase = 'calling';
@@ -573,7 +606,7 @@ function resolveTrick(room){
   // B1: only 3 players, so 13 tricks total (frozen player contributes 0)
   const trickTarget = 13;
   if(total >= trickTarget){
-    setTimeout(()=>endRound(room), 1400);
+    setTimeout(()=>{ if(room.gameState===gs && gs.phase==='playing') endRound(room); }, 1400);
   } else {
     let leader = w.position;
     // B1: if winner is frozen, pass lead to next valid player
@@ -582,6 +615,7 @@ function resolveTrick(room){
     }
     gs.currentPlayer = leader;
     setTimeout(()=>{
+      if(room.gameState!==gs || gs.phase!=='playing') return;   // round ended (e.g. surrender) meanwhile
       io.to(room.code).emit('newTrickStarting',{
         trickNumber: gs.trickNumber,
         leader:      gs.currentPlayer,
@@ -626,6 +660,55 @@ function endRound(room){
     var oppWonFlag    = gs.tricksWon[ot] >= OPP_TARGET;
   }
 
+  const bidLabel = gs.bidType==='b2' ? 'B2' : gs.bidType==='b1' ? 'B1' : gs.currentBid;
+  const msg = [
+    callerWonFlag
+      ? `Team ${ct} succeeded! ${gs.tricksWon[ct]} tricks (needed ${isBonus?BONUS_TARGET:gs.currentBid}) → +${rs[ct]}`
+      : `Team ${ct} failed! ${gs.tricksWon[ct]} tricks (needed ${isBonus?BONUS_TARGET:gs.currentBid}) → ${rs[ct]}`,
+    oppWonFlag
+      ? `Team ${ot} hit target! ${gs.tricksWon[ot]} tricks (target 5) → +5`
+      : `Team ${ot} missed target! ${gs.tricksWon[ot]} tricks (target 5) → -5`,
+  ].join(' | ');
+
+  concludeRound(room, rs, msg, bidLabel);
+}
+
+// Surrender ("হাত ফেলমু") — only during the card-playing phase.
+function surrenderRound(room, pos){
+  const gs = room.gameState;
+  if(!gs || gs.phase!=='playing') return;
+  const ct = teamOf(gs.currentBidder);
+  const ot = otherTeam(ct);
+  const st = teamOf(pos);
+  const isBonus = (gs.bidType==='b2' || gs.bidType==='b1');
+  const rs = { A:0, B:0 };
+
+  if(st===ct){
+    // Calling team gives up: caller loses its bid (B1/B2: -10), opponent gets +5
+    rs[ct] = isBonus ? BONUS_LOSE : -gs.currentBid;
+    rs[ot] = OPP_TARGET;
+  } else {
+    // Opponent gives up: opponent -5, calling team gets what it would get for a success
+    rs[ot] = -OPP_TARGET;
+    rs[ct] = isBonus ? BONUS_WIN : gs.currentBid;
+  }
+  gs.surrender = { pos, name: nm(room,pos), team: st };
+  gs.mustTrumpPos = -1;
+  const bidLabel = gs.bidType==='b2' ? 'B2' : gs.bidType==='b1' ? 'B1' : gs.currentBid;
+  const msg = [
+    `Team ${ct} (caller) → ${rs[ct]>0?'+':''}${rs[ct]}`,
+    `Team ${ot} → ${rs[ot]>0?'+':''}${rs[ot]}`,
+  ].join(' | ');
+  concludeRound(room, rs, msg, bidLabel);
+}
+
+function concludeRound(room, rs, msg, bidLabel){
+  const gs = room.gameState;
+  const ct = teamOf(gs.currentBidder);
+  if(gs.powerCard){
+    gs.trumpRevealed = true;
+    gs.trumpSuit     = gs.powerCard.card.suit;
+  }
   gs.scores.A += rs.A;
   gs.scores.B += rs.B;
   gs.phase     = 'roundEnd';
@@ -647,16 +730,6 @@ function endRound(room){
   // Save trick history for next round's Italy shuffle
   room._prevTrickHistory = [...gs.trickHistory];
 
-  const bidLabel = gs.bidType==='b2' ? 'B2' : gs.bidType==='b1' ? 'B1' : gs.currentBid;
-  const msg = [
-    callerWonFlag
-      ? `Team ${ct} succeeded! ${gs.tricksWon[ct]} tricks (needed ${isBonus?BONUS_TARGET:gs.currentBid}) → +${rs[ct]}`
-      : `Team ${ct} failed! ${gs.tricksWon[ct]} tricks (needed ${isBonus?BONUS_TARGET:gs.currentBid}) → ${rs[ct]}`,
-    oppWonFlag
-      ? `Team ${ot} hit target! ${gs.tricksWon[ot]} tricks (target 5) → +5`
-      : `Team ${ot} missed target! ${gs.tricksWon[ot]} tricks (target 5) → -5`,
-  ].join(' | ');
-
   // Cache for reconnect
   gs.lastRoundScore = { ...rs };
   gs.lastRoundMsg   = msg;
@@ -674,6 +747,7 @@ function endRound(room){
     powerCard:   gs.powerCard?.card ?? null,
     bidType:     gs.bidType,
     b1FrozenPos: gs.b1FrozenPos,
+    surrender:   gs.surrender,
   });
 
   if(gs.scores.A >= gs.matchTarget || gs.scores.B >= gs.matchTarget){
@@ -802,7 +876,7 @@ io.on('connection', socket => {
   // ── Settings ─────────────────────────────────
   socket.on('setTarget',({ target })=>{
     const room = rooms.get(socket.data.roomCode);
-    if(!room) return;
+    if(!room || !VALID_TARGETS.includes(target)) return;
     room.settings.matchTarget = target;
     io.to(room.code).emit('targetSet',{ target });
   });
@@ -839,13 +913,16 @@ io.on('connection', socket => {
     gs.discardedFlags[pos] = true;
     gs.discardedHands[pos] = [...hand];
 
-    // Put cards back in deck, reshuffle
-    gs.deck.push(...hand);
-    gs.deck = shuffle(gs.deck);
-    gs.hands[pos] = [];
-
-    // Deal 5 new cards to this player
-    for(let i=0;i<5&&gs.deck.length>0;i++) gs.hands[pos].push(gs.deck.shift());
+    // Put cards back in deck, reshuffle (retry until the final deal stays fair)
+    let pool = [...gs.deck, ...hand];
+    for(let attempt=0; attempt<500; attempt++){
+      pool = shuffle(pool);
+      const cand = pool.slice(0,5);
+      const initial = { ...gs.hands, [pos]: cand };
+      if(dealIsFair(simulateFullHands(gs, pool.slice(5), initial)) || attempt===499) break;
+    }
+    gs.hands[pos] = pool.slice(0,5);
+    gs.deck       = pool.slice(5);
     gs.hands[pos] = sortHand(gs.hands[pos]);
 
     // Tell everyone about the discard
@@ -1073,8 +1150,9 @@ io.on('connection', socket => {
     const tc = updatedHand.filter(c=>c.suit===gs.trumpSuit);
     let vids;
     if(tc.length>0){
-      const w = trickWin(gs.currentTrick, gs.leadSuit, gs.trumpSuit, true);
-      vids = (w!==null && teamOf(w)===teamOf(pos)) ? updatedHand.map(c=>c.id) : tc.map(c=>c.id);
+      // Revealer MUST play a trump card (any trump), even if partner is winning
+      gs.mustTrumpPos = pos;
+      vids = tc.map(c=>c.id);
     } else {
       vids = updatedHand.map(c=>c.id);
     }
@@ -1103,6 +1181,7 @@ io.on('connection', socket => {
     if(!validCards(gs,pos,hand).some(c=>c.id===cardId)) return socket.emit('err','Invalid play');
 
     hand.splice(cardIdx,1);
+    if(gs.mustTrumpPos===pos) gs.mustTrumpPos = -1;
     if(gs.currentTrick.length===0) gs.leadSuit = card.suit;
     gs.currentTrick.push({ position:pos, card });
 
@@ -1116,7 +1195,7 @@ io.on('connection', socket => {
 
     // B1: trick completes with 3 cards (frozen player skipped); normal: 4 cards
     const trickDone = gs.bidType==='b1' ? gs.currentTrick.length===3 : gs.currentTrick.length===4;
-    if(trickDone) setTimeout(()=>resolveTrick(room), 900);
+    if(trickDone) setTimeout(()=>{ if(room.gameState===gs && gs.phase==='playing') resolveTrick(room); }, 900);
     else {
       let next = (gs.currentPlayer+1)%4;
       // B1: skip frozen partner
@@ -1126,6 +1205,15 @@ io.on('connection', socket => {
       gs.currentPlayer = next;
       sendTurn(room, gs.currentPlayer);
     }
+  });
+
+  // ── Surrender (হাত ফেলমু) ─────────────────────
+  socket.on('surrender',()=>{
+    const room = rooms.get(socket.data.roomCode);
+    if(!room?.gameState) return;
+    const pos = socket.data.position;
+    if(pos===undefined || pos<0) return;
+    surrenderRound(room, pos);
   });
 
   // ── Ready for Next Round ─────────────────────
@@ -1156,13 +1244,53 @@ io.on('connection', socket => {
   });
 
   // ── Restart ──────────────────────────────────
+  // Host asks for a reset → the other players vote Yes/No. 2+ Yes votes → reset.
+  function finishResetVote(room, passed, reason){
+    const v = room.resetVote;
+    if(!v) return;
+    clearTimeout(v.timer);
+    room.resetVote = null;
+    io.to(room.code).emit('resetVoteResult',{ passed, reason:reason||'' });
+    if(passed){
+      room.gameState = null;
+      room.readySet.clear();
+      io.to(room.code).emit('gameReset',{ players:pi(room) });
+    }
+  }
   socket.on('restartGame',()=>{
     const room = rooms.get(socket.data.roomCode);
     if(!room) return;
     if(socket.data.sessionId !== room.hostSid) return;
-    room.gameState = null;
-    room.readySet.clear();
-    io.to(room.code).emit('gameReset',{ players:pi(room) });
+    if(!room.gameState){            // nothing to vote on (still in lobby)
+      room.readySet.clear();
+      io.to(room.code).emit('gameReset',{ players:pi(room) });
+      return;
+    }
+    if(room.resetVote) return socket.emit('err','Reset vote already in progress');
+    const voters = room.players.filter(p=>p.sessionId!==room.hostSid && io.sockets.sockets.has(p.id)).map(p=>p.position);
+    if(voters.length < 2) return socket.emit('err','Need at least 2 other online players to vote');
+    room.resetVote = { voters, yes:new Set(), no:new Set(), timer:null };
+    room.resetVote.timer = setTimeout(()=>finishResetVote(room,false,'timeout'), 30000);
+    const hostName = nm(room, socket.data.position);
+    room.players.forEach(p=>{
+      if(voters.includes(p.position)){
+        const s = io.sockets.sockets.get(p.id);
+        if(s) s.emit('resetVoteRequest',{ hostName });
+      }
+    });
+    socket.emit('resetVoteStarted',{});
+  });
+  socket.on('resetVote',({ yes })=>{
+    const room = rooms.get(socket.data.roomCode);
+    const v = room?.resetVote;
+    if(!v) return;
+    const pos = socket.data.position;
+    if(!v.voters.includes(pos) || v.yes.has(pos) || v.no.has(pos)) return;
+    (yes ? v.yes : v.no).add(pos);
+    io.to(room.code).emit('resetVoteProgress',{ yes:v.yes.size, no:v.no.size, total:v.voters.length });
+    if(v.yes.size >= 2) return finishResetVote(room,true);
+    // Reset can no longer reach 2 Yes votes
+    if(v.voters.length - v.no.size < 2) return finishResetVote(room,false,'rejected');
   });
 
   // ── Disconnect ───────────────────────────────
