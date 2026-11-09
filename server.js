@@ -1173,6 +1173,11 @@ io.on('connection', socket => {
     if(gs.phase !== 'playing') return;
     const pos = socket.data.position;
     if(gs.currentPlayer !== pos) return;
+    // Guard against double-click / duplicate packets: one card per player per trick,
+    // and never more cards than the trick can hold (4, or 3 in B1).
+    const maxTrick = gs.bidType==='b1' ? 3 : 4;
+    if(gs.currentTrick.length >= maxTrick) return;
+    if(gs.currentTrick.some(t=>t.position===pos)) return;
 
     const hand    = gs.hands[pos];
     const cardIdx = hand.findIndex(c=>c.id===cardId);
@@ -1195,7 +1200,7 @@ io.on('connection', socket => {
 
     // B1: trick completes with 3 cards (frozen player skipped); normal: 4 cards
     const trickDone = gs.bidType==='b1' ? gs.currentTrick.length===3 : gs.currentTrick.length===4;
-    if(trickDone) setTimeout(()=>{ if(room.gameState===gs && gs.phase==='playing') resolveTrick(room); }, 900);
+    if(trickDone){ gs.currentPlayer = -1; setTimeout(()=>{ if(room.gameState===gs && gs.phase==='playing') resolveTrick(room); }, 900); }
     else {
       let next = (gs.currentPlayer+1)%4;
       // B1: skip frozen partner
