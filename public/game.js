@@ -16,7 +16,7 @@ const SESSION_ID = getSessionId();
 let myPos=-1, myHand=[], validIds=[], isMyTurn=false;
 let currentBid=0, currentBidder=-1;
 let trumpSuit=null, trumpRevealed=false, leadSuit=null;
-let scores={A:0,B:0}, roundNum=1, matchTarget=30;
+let scores={A:0,B:0}, roundNum=1, matchTarget=32;
 let players=[], bidLog=[], handCounts={0:0,1:0,2:0,3:0};
 let dealerPos=0, dragId=null, canRevTrump=false, amHost=false;
 let myEmoji='🎴', playerEmojis={};
@@ -437,7 +437,13 @@ function openRoundEnd(data){
   const oppTeam=bidderTeam==='A'?'B':'A';
   $('re-title').textContent=`Round ${roundNum} Over`;
   const parts=message.split(' | ');
-  $('re-msg').innerHTML=parts.map(p=>`<div>${p}</div>`).join('');
+  const msgEl=$('re-msg');msgEl.innerHTML=parts.map(p=>`<div>${p}</div>`).join('');
+  if(data.surrender){
+    const d=document.createElement('div');
+    d.style.cssText='font-weight:700;color:#ffb74d;margin-bottom:4px';
+    d.textContent=`🏳️ ${data.surrender.name} (Team ${data.surrender.team}) হাত ফেলেছে`;
+    msgEl.prepend(d);
+  }
   if(powerCard){$('re-pc').innerHTML='';$('re-pc').appendChild(mkCard(powerCard));$('re-pv').style.display='flex';}
   else $('re-pv').style.display='none';
   ['a','b'].forEach(t=>{
@@ -446,11 +452,15 @@ function openRoundEnd(data){
     const el=$(`re-r${t}`);el.textContent=v>=0?`+${v}`:`${v}`;
     el.className=`sv ${v>0?'plus':v<0?'minus':''}`;
     const tgt=$(`re-tgt${t}`);
-    if(tgt){tgt.textContent=`Target ${target} · Got ${tricks} tricks`;tgt.style.color=v>0?'rgba(128,203,196,.9)':'rgba(239,154,154,.9)';}
+    if(tgt){tgt.textContent=data.surrender?(data.surrender.team===T?'হাত ফেলেছে':''):`Target ${target} · Got ${tricks} tricks`;tgt.style.color=v>0?'rgba(128,203,196,.9)':'rgba(239,154,154,.9)';}
     $(`re-t${t}`).textContent=`Total: ${totalScores[T]}`;
   });
   $('re-ri').textContent='';showOv('ov-round');
 }
+// ── Surrender (হাত ফেলমু) ─────────────────────
+function showSurrenderBtn(show){const b=$('btn-surrender');if(b)b.style.display=show?'block':'none';if(!show)hideOv('ov-surrender');}
+function onSurrenderClick(){showOv('ov-surrender');}
+function onSurrenderConfirm(){hideOv('ov-surrender');socket.emit('surrender');}
 function onReadyNext(){socket.emit('readyForNextRound');$('re-ri').textContent='Waiting for others…';}
 
 // ── Lobby ─────────────────────────────────────
@@ -476,9 +486,14 @@ function onRestartGame(){
   if(!amHost){ toast('⚠ Only the room host can reset the game',2500); return; }
   socket.emit('restartGame');
 }
+function onResetVote(yes){
+  socket.emit('resetVote',{yes});
+  const b=$('rv-btns');if(b)b.style.display='none';
+  const w=$('rv-wait');if(w){w.style.display='block';w.textContent='আপনার ভোট দেওয়া হয়েছে…';}
+}
 function copyCode(){navigator.clipboard?.writeText($('disp-code').textContent).then(()=>toast('Code copied! 📋'));}
 function selectTarget(v){
-  socket.emit('setTarget',{target:v});$('t30').classList.toggle('sel',v===30);$('t50').classList.toggle('sel',v===50);
+  socket.emit('setTarget',{target:v});[32,52,72].forEach(t=>$('t'+t)?.classList.toggle('sel',v===t));
 }
 function applyEmojis(em){if(em)Object.assign(playerEmojis,em);}
 
@@ -589,10 +604,21 @@ socket.on('roomJoined',({code,position,players:ps,isHost,emojis})=>{
 });
 socket.on('playerJoined',({players:ps,emojis})=>{players=ps;applyEmojis(emojis);renderSeats(ps);sfxDeal();toast(`${ps[ps.length-1].name} joined!`);});
 socket.on('allReady',({players:ps,emojis})=>{players=ps;applyEmojis(emojis);renderSeats(ps);toast(amHost?'All 4 ready! Start the game.':'All 4 players ready!');});
-socket.on('targetSet',({target})=>{matchTarget=target;$('t30')?.classList.toggle('sel',target===30);$('t50')?.classList.toggle('sel',target===50);toast(`Target: ${target} pts`);});
+socket.on('targetSet',({target})=>{matchTarget=target;[32,52,72].forEach(t=>$('t'+t)?.classList.toggle('sel',target===t));toast(`Target: ${target} pts`);});
 socket.on('yourPosition',({position})=>{myPos=position;renderSeats(players);});
 socket.on('seatsUpdated',({players:ps,emojis})=>{players=ps;applyEmojis(emojis);renderSeats(ps);toast('Seats updated!');sfxDeal();});
+socket.on('resetVoteStarted',()=>toast('🗳 Reset-er jonno baki player-der vote chaoa hoyeche…',3000));
+socket.on('resetVoteRequest',({hostName})=>{
+  $('rv-text').textContent=`${hostName} game reset korte chay. Reset korbo?`;
+  $('rv-btns').style.display='flex';$('rv-wait').style.display='none';
+  showOv('ov-resetvote');
+});
+socket.on('resetVoteResult',({passed,reason})=>{
+  hideOv('ov-resetvote');
+  if(!passed) toast(reason==='timeout'?'⏱ Reset vote-er somoy shesh — reset hoy nai':'❌ Reset hoy nai (majority No)',3000);
+});
 socket.on('gameReset',({players:ps})=>{
+  showSurrenderBtn(false);
   players=ps;myHand=[];validIds=[];isMyTurn=false;canDiscardAll=false;
   trumpSuit=null;trumpRevealed=false;scores={A:0,B:0};bidLog=[];stopBidTimer();
   hideAllOv();showScreen('screen-waiting');renderSeats(ps);toast('Game reset');
@@ -601,6 +627,7 @@ socket.on('gameReset',({players:ps})=>{
 // Round
 socket.on('roundBegin',({roundNumber:rn,scores:sc,players:ps,matchTarget:mt,
   dealerPos:dp,dealerName,firstActiveName,firstActivePos,emojis,isReconnect})=>{
+  showSurrenderBtn(false);
   roundNum=rn;scores=sc;matchTarget=mt;players=ps;dealerPos=dp;
   if(!isReconnect){ myHand=[]; }  // reconnect: keep hand until handUpdate arrives
   validIds=[];isMyTurn=false;canDiscardAll=false;
@@ -737,6 +764,7 @@ socket.on('dealingComplete',({bidderName,bid})=>{$('status').textContent=`${bidd
 
 // Playing
 socket.on('playingStarted',({currentPlayer:cp,currentPlayerName,trickNumber,b1FrozenPos,bidType,isReconnect})=>{
+  showSurrenderBtn(true);
   setActiveAv(cp);
   $('status').textContent=isReconnect?`Trick ${trickNumber} — ${currentPlayerName}'s turn`:`${currentPlayerName} leads Trick 1`;
   updateTrickNum(trickNumber);
@@ -800,6 +828,7 @@ socket.on('tricksUpdate',({tricksWon})=>{
 });
 
 socket.on('roundEnd',data=>{
+  showSurrenderBtn(false);
   scores=data.totalScores;updateHUD();updateTricks(data.tricksWon);
   isMyTurn=false;validIds=[];setRevealBtn(false);stopBidTimer();canDiscardAll=false;renderHand();
   clearFrozenBadge();
@@ -809,6 +838,7 @@ socket.on('roundEnd',data=>{
 });
 socket.on('readyCount',({ready,total})=>{const e=$('re-ri');if(e)e.textContent=`${ready}/${total} ready…`;});
 socket.on('gameOver',({winner,scores:sc})=>{
+  showSurrenderBtn(false);
   hideAllOv();scores=sc;updateHUD();$('go-a').textContent=sc.A;$('go-b').textContent=sc.B;
   const b=$('win-ban');b.textContent=`Team ${winner} Wins!`;b.className=`win-ban ${winner}`;
   sfxGame();launchConfetti(5000);showScreen('screen-gameover');
